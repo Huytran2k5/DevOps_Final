@@ -403,8 +403,8 @@ jobs:
           
           # Get values from Terraform outputs
           CLUSTER_NAME="${{ secrets.EKS_CLUSTER_NAME }}"
-          VPC_ID=$(jq -r '.vpc_id.value' ../outputs.json)
-          ROLE_ARN=$(jq -r '.aws_load_balancer_controller_role_arn.value' ../outputs.json)
+          VPC_ID=$(jq -r '.vpc_id.value' ../../outputs.json)
+          ROLE_ARN=$(jq -r '.aws_load_balancer_controller_role_arn.value' ../../outputs.json)
           
           echo "Cluster: $CLUSTER_NAME"
           echo "VPC ID: $VPC_ID"
