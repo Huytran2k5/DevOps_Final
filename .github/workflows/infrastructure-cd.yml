@@ -397,7 +397,7 @@ jobs:
           fi
       
       - name: Install AWS Load Balancer Controller via Terraform Helm
-        working-directory: terraform-helm
+        working-directory: terraform/helm
         run: |
           echo "📦 Installing AWS Load Balancer Controller via Terraform Helm Provider..."
           
