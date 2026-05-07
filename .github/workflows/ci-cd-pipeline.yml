@@ -19,6 +19,7 @@ env:
   DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
   AWS_REGION: ap-southeast-1
   STAGING_NAMESPACE: productx-staging
+  PROD_NAMESPACE: productx
   PROJECT_NAME: productx
 
 jobs:
@@ -709,7 +710,23 @@ jobs:
         run: |
           echo "🔍 Getting current version from ConfigMap..."
 
-          CURRENT_VERSION=$(kubectl get configmap app-config -n productx -o jsonpath='{.data.APP_VERSION}' 2>/dev/null || echo "v1.0.0")
+          TARGET_NAMESPACE="${{ env.PROD_NAMESPACE }}"
+
+          if kubectl get configmap app-config -n "$TARGET_NAMESPACE" >/dev/null 2>&1; then
+            echo "✅ Using ConfigMap in namespace: $TARGET_NAMESPACE"
+          elif kubectl get configmap app-config -n "${{ env.STAGING_NAMESPACE }}" >/dev/null 2>&1; then
+            TARGET_NAMESPACE="${{ env.STAGING_NAMESPACE }}"
+            echo "⚠️ ConfigMap not found in prod, using namespace: $TARGET_NAMESPACE"
+          else
+            TARGET_NAMESPACE=""
+            echo "⚠️ ConfigMap not found in prod or staging; defaulting to v1.0.0"
+          fi
+
+          if [ -n "$TARGET_NAMESPACE" ]; then
+            CURRENT_VERSION=$(kubectl get configmap app-config -n "$TARGET_NAMESPACE" -o jsonpath='{.data.APP_VERSION}' 2>/dev/null || echo "v1.0.0")
+          else
+            CURRENT_VERSION="v1.0.0"
+          fi
 
           echo "📋 Current version: $CURRENT_VERSION"
 
@@ -797,24 +814,44 @@ jobs:
         run: |
           echo "📝 Updating ConfigMap with new version: ${{ needs.version-management.outputs.new_version }}"
 
-          kubectl patch configmap app-config -n productx \
+          TARGET_NAMESPACE="${{ env.PROD_NAMESPACE }}"
+
+          if kubectl get configmap app-config -n "$TARGET_NAMESPACE" >/dev/null 2>&1; then
+            echo "✅ Found ConfigMap in namespace: $TARGET_NAMESPACE"
+          elif kubectl get configmap app-config -n "${{ env.STAGING_NAMESPACE }}" >/dev/null 2>&1; then
+            TARGET_NAMESPACE="${{ env.STAGING_NAMESPACE }}"
+            echo "⚠️ ConfigMap not found in prod, using namespace: $TARGET_NAMESPACE"
+          else
+            echo "⚠️ ConfigMap not found in prod or staging; skipping update and restart"
+            exit 0
+          fi
+
+          kubectl patch configmap app-config -n "$TARGET_NAMESPACE" \
             --type merge \
             -p '{"data":{"APP_VERSION":"${{ needs.version-management.outputs.new_version }}"}}'
 
           echo "✅ ConfigMap updated successfully"
 
-          UPDATED_VERSION=$(kubectl get configmap app-config -n productx -o jsonpath='{.data.APP_VERSION}')
+          UPDATED_VERSION=$(kubectl get configmap app-config -n "$TARGET_NAMESPACE" -o jsonpath='{.data.APP_VERSION}')
           echo "📋 Verified ConfigMap version: $UPDATED_VERSION"
 
           echo "🔄 Restarting pods to pick up new version..."
-          kubectl rollout restart deployment/backend -n productx
-          kubectl rollout restart deployment/frontend -n productx
+          for DEPLOY in backend frontend; do
+            if kubectl get deployment "$DEPLOY" -n "$TARGET_NAMESPACE" >/dev/null 2>&1; then
+              kubectl rollout restart deployment/"$DEPLOY" -n "$TARGET_NAMESPACE"
+            else
+              echo "⚠️ Deployment $DEPLOY not found in $TARGET_NAMESPACE, skipping restart"
+            fi
+          done
 
           echo "⏳ Waiting for pods to restart with new version..."
-          kubectl rollout status deployment/backend -n productx --timeout=300s
-          kubectl rollout status deployment/frontend -n productx --timeout=300s
+          for DEPLOY in backend frontend; do
+            if kubectl get deployment "$DEPLOY" -n "$TARGET_NAMESPACE" >/dev/null 2>&1; then
+              kubectl rollout status deployment/"$DEPLOY" -n "$TARGET_NAMESPACE" --timeout=300s
+            fi
+          done
 
-          echo "✅ Pods restarted with new version"
+          echo "✅ ConfigMap update step completed"
 
       - name: Skip ConfigMap Update
         if: needs.version-management.outputs.version_changed == 'false'
