@@ -24,7 +24,8 @@ public class ProductRequest {
 
   private String description;
   
-  @Size(max = Integer.MAX_VALUE, message = "Image is too large") 
+  // Assuming the image is represented as a Base64 encoded string, we can set a reasonable maximum size for it.
+  @Size(max = Integer.MAX_VALUE, message = "Image is too large")      
   private String image;
 
   public String getName() {
