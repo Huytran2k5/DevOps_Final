@@ -24,7 +24,7 @@ public class ProductRequest {
 
   private String description;
   
-  @Size(max = Integer.MAX_VALUE, message = "Image is too large") 
+  @Size(max = Integer.MAX_VALUE, message = "Image is too large")
   private String image;
 
   public String getName() {
